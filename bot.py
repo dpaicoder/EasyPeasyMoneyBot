@@ -355,6 +355,11 @@ async def main():
         logger.error("No BOT_TOKEN found in environment variables")
         return
     
+    # Verify token format
+    if not token.count(':') == 1:
+        logger.error("Invalid token format. Token should contain exactly one ':'")
+        return
+    
     # Log the first few characters of the token for verification
     logger.info(f"Bot token found: {token[:10]}...")
     
@@ -367,7 +372,10 @@ async def main():
         # Create the Application and pass it your bot's token
         logger.info("Creating application...")
         application = Application.builder().token(token).build()
-        logger.info("Application created successfully")
+        
+        # Verify bot token by getting bot info
+        bot = await application.bot.get_me()
+        logger.info(f"Bot verified: @{bot.username}")
         
         # Add handlers
         logger.info("Adding handlers...")
