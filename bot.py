@@ -345,24 +345,35 @@ async def main():
         logger.error("No BOT_TOKEN found in environment variables")
         return
     
-    # Initialize database
-    await init_db()
+    # Log the first few characters of the token for verification
+    logger.info(f"Bot token found: {token[:10]}...")
     
-    # Create the Application and pass it your bot's token
-    application = Application.builder().token(token).build()
-    
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CallbackQueryHandler(button))
-    
-    # Add error handler
-    application.add_error_handler(error_handler)
-    
-    # Start the Bot
-    await application.initialize()
-    await application.start()
-    await application.run_polling()
+    try:
+        # Initialize database
+        await init_db()
+        logger.info("Database initialized successfully")
+        
+        # Create the Application and pass it your bot's token
+        application = Application.builder().token(token).build()
+        logger.info("Application created successfully")
+        
+        # Add handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CallbackQueryHandler(button))
+        logger.info("Handlers added successfully")
+        
+        # Add error handler
+        application.add_error_handler(error_handler)
+        
+        # Start the Bot
+        logger.info("Starting bot...")
+        await application.initialize()
+        await application.start()
+        await application.run_polling()
+    except Exception as e:
+        logger.error(f"Error starting bot: {str(e)}")
+        raise
 
 if __name__ == '__main__':
     asyncio.run(main()) 
