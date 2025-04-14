@@ -337,13 +337,16 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Please try again later."
         )
 
-def main():
+async def main():
     """Start the bot"""
     # Get bot token from environment variable
     token = os.getenv('BOT_TOKEN')
     if not token:
         logger.error("No BOT_TOKEN found in environment variables")
         return
+    
+    # Initialize database
+    await init_db()
     
     # Create the Application and pass it your bot's token
     application = Application.builder().token(token).build()
@@ -356,11 +359,10 @@ def main():
     # Add error handler
     application.add_error_handler(error_handler)
     
-    # Initialize database
-    asyncio.run(init_db())
-    
     # Start the Bot
-    application.run_polling()
+    await application.initialize()
+    await application.start()
+    await application.run_polling()
 
 if __name__ == '__main__':
-    main() 
+    asyncio.run(main()) 
