@@ -3,6 +3,7 @@ import logging
 import random
 import string
 import asyncio
+import sys
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -27,12 +28,21 @@ from models import User, Task, TaskCompletion, Transaction
 # Load environment variables
 load_dotenv()
 
-# Enable logging
+# Configure logging to stdout
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    stream=sys.stdout  # Ensure logs go to stdout
 )
+
+# Get logger
 logger = logging.getLogger(__name__)
+
+# Log startup information
+logger.info("Starting bot initialization...")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Environment variables loaded: {bool(os.getenv('BOT_TOKEN'))}")
 
 # Generate a random referral code
 def generate_referral_code():
@@ -350,14 +360,17 @@ async def main():
     
     try:
         # Initialize database
+        logger.info("Initializing database...")
         await init_db()
         logger.info("Database initialized successfully")
         
         # Create the Application and pass it your bot's token
+        logger.info("Creating application...")
         application = Application.builder().token(token).build()
         logger.info("Application created successfully")
         
         # Add handlers
+        logger.info("Adding handlers...")
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CallbackQueryHandler(button))
@@ -367,13 +380,17 @@ async def main():
         application.add_error_handler(error_handler)
         
         # Start the Bot
-        logger.info("Starting bot...")
+        logger.info("Starting bot polling...")
         await application.initialize()
         await application.start()
         await application.run_polling()
     except Exception as e:
-        logger.error(f"Error starting bot: {str(e)}")
+        logger.error(f"Error starting bot: {str(e)}", exc_info=True)
         raise
 
 if __name__ == '__main__':
-    asyncio.run(main()) 
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logger.error(f"Fatal error: {str(e)}", exc_info=True)
+        sys.exit(1) 
