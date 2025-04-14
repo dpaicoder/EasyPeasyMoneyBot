@@ -51,73 +51,93 @@ def generate_referral_code():
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /start command"""
-    user = update.effective_user
-    referral_code = context.args[0] if context.args else None
-    
-    async with get_session() as session:
-        # Check if user already exists
-        existing_user = await get_user_by_telegram_id(session, user.id)
+    try:
+        logger.info(f"Received /start command from user {update.effective_user.id}")
+        user = update.effective_user
+        referral_code = context.args[0] if context.args else None
         
-        if not existing_user:
-            # Create new user
-            new_referral_code = generate_referral_code()
-            new_user = await create_user(
-                session,
-                user.id,
-                user.username,
-                user.first_name,
-                user.last_name,
-                new_referral_code
+        logger.info(f"Processing start command for user {user.id} with referral code: {referral_code}")
+        
+        async with get_session() as session:
+            # Check if user already exists
+            existing_user = await get_user_by_telegram_id(session, user.id)
+            logger.info(f"User exists: {bool(existing_user)}")
+            
+            if not existing_user:
+                # Create new user
+                new_referral_code = generate_referral_code()
+                logger.info(f"Creating new user with referral code: {new_referral_code}")
+                
+                new_user = await create_user(
+                    session,
+                    user.id,
+                    user.username,
+                    user.first_name,
+                    user.last_name,
+                    new_referral_code
+                )
+                logger.info(f"New user created with ID: {new_user.id}")
+                
+                # If user came through referral
+                if referral_code:
+                    logger.info(f"Processing referral code: {referral_code}")
+                    referrer = await session.execute(
+                        User.__table__.select().where(User.referral_code == referral_code)
+                    )
+                    referrer = referrer.scalar_one_or_none()
+                    if referrer:
+                        new_user.referred_by = referrer.id
+                        await session.commit()
+                        logger.info(f"User {user.id} referred by {referrer.id}")
+                        
+                        # Create referral bonus transaction
+                        await create_transaction(
+                            session,
+                            referrer.id,
+                            float(os.getenv('REFERRAL_BONUS', '10.0')),
+                            'referral_bonus'
+                        )
+                        logger.info(f"Created referral bonus transaction for {referrer.id}")
+            
+            # Send welcome message
+            keyboard = [
+                [
+                    InlineKeyboardButton("🎯 Available Tasks", callback_data='tasks'),
+                    InlineKeyboardButton("💰 My Balance", callback_data='balance')
+                ],
+                [
+                    InlineKeyboardButton("👥 My Referrals", callback_data='referrals'),
+                    InlineKeyboardButton("📊 Statistics", callback_data='stats')
+                ],
+                [
+                    InlineKeyboardButton("❓ Help", callback_data='help')
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            welcome_text = (
+                f"👋 Welcome to the Refer & Earn Bot!\n\n"
+                f"🎯 Complete tasks to earn rewards\n"
+                f"👥 Invite friends and earn bonuses\n"
+                f"💰 Withdraw your earnings\n\n"
+                f"Your referral code: `{new_referral_code}`\n"
+                f"Share this code with friends to earn bonuses!"
             )
             
-            # If user came through referral
-            if referral_code:
-                referrer = await session.execute(
-                    User.__table__.select().where(User.referral_code == referral_code)
-                )
-                referrer = referrer.scalar_one_or_none()
-                if referrer:
-                    new_user.referred_by = referrer.id
-                    await session.commit()
-                    
-                    # Create referral bonus transaction
-                    await create_transaction(
-                        session,
-                        referrer.id,
-                        float(os.getenv('REFERRAL_BONUS', '10.0')),
-                        'referral_bonus'
-                    )
-        
-        # Send welcome message
-        keyboard = [
-            [
-                InlineKeyboardButton("🎯 Available Tasks", callback_data='tasks'),
-                InlineKeyboardButton("💰 My Balance", callback_data='balance')
-            ],
-            [
-                InlineKeyboardButton("👥 My Referrals", callback_data='referrals'),
-                InlineKeyboardButton("📊 Statistics", callback_data='stats')
-            ],
-            [
-                InlineKeyboardButton("❓ Help", callback_data='help')
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        welcome_text = (
-            f"👋 Welcome to the Refer & Earn Bot!\n\n"
-            f"🎯 Complete tasks to earn rewards\n"
-            f"👥 Invite friends and earn bonuses\n"
-            f"💰 Withdraw your earnings\n\n"
-            f"Your referral code: `{new_referral_code}`\n"
-            f"Share this code with friends to earn bonuses!"
-        )
-        
-        await update.message.reply_text(
-            welcome_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+            logger.info(f"Sending welcome message to user {user.id}")
+            await update.message.reply_text(
+                welcome_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            logger.info("Welcome message sent successfully")
+            
+    except Exception as e:
+        logger.error(f"Error in start handler: {str(e)}", exc_info=True)
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "Sorry, an error occurred. Please try again later."
+            )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /help command"""
@@ -349,21 +369,21 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def main():
     """Start the bot"""
-    # Get bot token from environment variable
-    token = os.getenv('BOT_TOKEN')
-    if not token:
-        logger.error("No BOT_TOKEN found in environment variables")
-        return
-    
-    # Verify token format
-    if not token.count(':') == 1:
-        logger.error("Invalid token format. Token should contain exactly one ':'")
-        return
-    
-    # Log the first few characters of the token for verification
-    logger.info(f"Bot token found: {token[:10]}...")
-    
     try:
+        # Get bot token from environment variable
+        token = os.getenv('BOT_TOKEN')
+        if not token:
+            logger.error("No BOT_TOKEN found in environment variables")
+            return
+        
+        # Verify token format
+        if not token.count(':') == 1:
+            logger.error("Invalid token format. Token should contain exactly one ':'")
+            return
+        
+        # Log the first few characters of the token for verification
+        logger.info(f"Bot token found: {token[:10]}...")
+        
         # Initialize database
         logger.info("Initializing database...")
         await init_db()
@@ -393,7 +413,7 @@ async def main():
         await application.start()
         await application.run_polling()
     except Exception as e:
-        logger.error(f"Error starting bot: {str(e)}", exc_info=True)
+        logger.error(f"Error in main function: {str(e)}", exc_info=True)
         raise
 
 if __name__ == '__main__':
